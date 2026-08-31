@@ -13,21 +13,31 @@ export default function ForecastChart() {
   useEffect(() => {
     api.get(`/forecast/latest/${symbol}`).then(res => {
       const f = res.data;
+      if (!f) {
+        setRawForecast(null);
+        setData([]);
+        return;
+      }
       setRawForecast(f);
-      setData([
-        { horizon: 'Current', p10: f.base_price, p50: f.base_price, p90: f.base_price, range: [f.base_price, f.base_price] },
-        { horizon: '1 Day', p10: f.pred_1d_10th, p50: f.pred_1d_50th, p90: f.pred_1d_90th, range: [f.pred_1d_10th, f.pred_1d_90th] },
-        { horizon: '1 Month', p10: f.pred_1m_10th, p50: f.pred_1m_50th, p90: f.pred_1m_90th, range: [f.pred_1m_10th, f.pred_1m_90th] },
-        { horizon: '3 Months', p10: f.pred_3m_10th, p50: f.pred_3m_50th, p90: f.pred_3m_90th, range: [f.pred_3m_10th, f.pred_3m_90th] }
-      ]);
+      // Backend now returns pre-formatted forecast_points array
+      if (f.forecast_points) {
+        setData(f.forecast_points);
+      }
     }).catch(console.error);
   }, [symbol]);
 
   const getCurrentMetrics = () => {
     if (!rawForecast) return { p10: 0, p50: 0, p90: 0 };
-    if (horizon === '1D') return { p10: rawForecast.pred_1d_10th, p50: rawForecast.pred_1d_50th, p90: rawForecast.pred_1d_90th };
-    if (horizon === '1M') return { p10: rawForecast.pred_1m_10th, p50: rawForecast.pred_1m_50th, p90: rawForecast.pred_1m_90th };
-    return { p10: rawForecast.pred_3m_10th, p50: rawForecast.pred_3m_50th, p90: rawForecast.pred_3m_90th };
+    if (horizon === '1D') {
+      const pt = rawForecast.forecast_points?.find((p: any) => p.horizon === '1 Day' || p.date === '1 Day');
+      return pt ? { p10: pt.p10, p50: pt.p50, p90: pt.p90 } : { p10: 0, p50: 0, p90: 0 };
+    }
+    if (horizon === '1M') {
+      const pt = rawForecast.forecast_points?.find((p: any) => p.horizon === '1 Month' || p.date === '1 Month');
+      return pt ? { p10: pt.p10, p50: pt.p50, p90: pt.p90 } : { p10: 0, p50: 0, p90: 0 };
+    }
+    const pt = rawForecast.forecast_points?.find((p: any) => p.horizon === '3 Months' || p.date === '3 Months');
+    return pt ? { p10: pt.p10, p50: pt.p50, p90: pt.p90 } : { p10: 0, p50: 0, p90: 0 };
   };
 
   const metrics = getCurrentMetrics();
@@ -68,7 +78,7 @@ export default function ForecastChart() {
             </div>
             <h3 className="text-muted-foreground text-sm font-medium">Maximum Risk (p90)</h3>
           </div>
-          <p className="text-3xl font-bold text-foreground mt-2">${metrics.p90.toFixed(2)}</p>
+          <p className="text-3xl font-bold text-foreground mt-2">${metrics?.p90 != null ? metrics.p90.toFixed(2) : "--.--"}</p>
         </div>
         
         <div className="bg-card border border-primary/30 rounded-xl p-5 relative overflow-hidden shadow-sm hover:border-primary/50 transition-colors">
@@ -79,7 +89,7 @@ export default function ForecastChart() {
             </div>
             <h3 className="text-muted-foreground text-sm font-medium">Expected Baseline (p50)</h3>
           </div>
-          <p className="text-3xl font-bold text-foreground mt-2">${metrics.p50.toFixed(2)}</p>
+          <p className="text-3xl font-bold text-foreground mt-2">${metrics?.p50 != null ? metrics.p50.toFixed(2) : "--.--"}</p>
         </div>
 
         <div className="bg-card border border-emerald-500/30 rounded-xl p-5 relative overflow-hidden shadow-sm hover:border-emerald-500/50 transition-colors">
@@ -90,7 +100,7 @@ export default function ForecastChart() {
             </div>
             <h3 className="text-muted-foreground text-sm font-medium">Optimal Buying Zone (p10)</h3>
           </div>
-          <p className="text-3xl font-bold text-foreground mt-2">${metrics.p10.toFixed(2)}</p>
+          <p className="text-3xl font-bold text-foreground mt-2">${metrics?.p10 != null ? metrics.p10.toFixed(2) : "--.--"}</p>
         </div>
       </div>
 
@@ -117,8 +127,14 @@ export default function ForecastChart() {
                   contentStyle={{ backgroundColor: 'hsl(var(--color-popover))', border: '1px solid hsl(var(--color-border))', borderRadius: '8px', color: 'hsl(var(--color-popover-foreground))' }} 
                   itemStyle={{ color: 'hsl(var(--color-foreground))' }}
                   formatter={(value: any, name: string) => {
-                    if (name === "range" && Array.isArray(value)) return [`$${value[0].toFixed(2)} - $${value[1].toFixed(2)}`, 'p10 - p90 Range'];
-                    if (name === "p50") return [`$${Number(value).toFixed(2)}`, 'p50 Base'];
+                    if (name === "range" && Array.isArray(value)) {
+                      const v0 = value[0] != null ? Number(value[0]).toFixed(2) : "--.--";
+                      const v1 = value[1] != null ? Number(value[1]).toFixed(2) : "--.--";
+                      return [`$${v0} - $${v1}`, 'p10 - p90 Range'];
+                    }
+                    if (name === "p50") {
+                      return [value != null ? `$${Number(value).toFixed(2)}` : '--.--', 'p50 Base'];
+                    }
                     return [value, name];
                   }}
                 />

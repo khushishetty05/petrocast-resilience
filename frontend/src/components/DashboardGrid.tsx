@@ -12,13 +12,15 @@ export default function DashboardGrid() {
       .then(res => setMarkets(Array.isArray(res.data) ? res.data : (res.data.tickers || [])))
       .catch(console.error);
       
-    api.get('/chokepoints/risks')
-      .then(res => setChokepoints(Array.isArray(res.data) ? res.data : []))
-      .catch(() => {
-        api.get('/chokepoints/live')
-          .then(res => setChokepoints(Array.isArray(res.data) ? res.data : []))
-          .catch(console.error);
-      });
+    api.get('/chokepoints/live')
+      .then(res => {
+        if (res.data) {
+          setChokepoints(Array.isArray(res.data) ? res.data : []);
+        } else {
+          setChokepoints([]);
+        }
+      })
+      .catch(console.error);
   }, []);
 
   return (

@@ -3,9 +3,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.endpoints import market, procurement, chokepoint, rag, agent, forecast
 from app.services.market_data_client import init_scheduler
+from app.initial_data import seed_initial_data
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Seed fallback data
+    await seed_initial_data()
     # Start scheduler
     scheduler = init_scheduler()
     scheduler.start()

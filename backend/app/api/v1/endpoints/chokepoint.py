@@ -9,6 +9,7 @@ from app.services.chokepoint_service import get_chokepoint_risks, get_chokepoint
 router = APIRouter()
 
 @router.get("/live", response_model=List[ChokepointRiskResponse])
+@router.get("/risks", response_model=List[ChokepointRiskResponse])
 async def get_live_chokepoints(db: AsyncSession = Depends(get_db)):
     """
     Returns all maritime chokepoints with dynamic risk scores based on live market volatility.

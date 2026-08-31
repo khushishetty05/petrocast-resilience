@@ -34,14 +34,21 @@ async def generate_quantile_forecast(symbol: str, db: AsyncSession) -> PriceFore
     
     if not base_ticker:
         logger.error(f"Missing market data for base asset: {norm_symbol}")
-    if not vix_ticker:
-        logger.error("Missing market data for volatility benchmark: VIX")
+        raise ValueError(f"Missing market data for forecasting. Base: {norm_symbol}=Missing")
         
-    if not base_ticker or not vix_ticker:
-        raise ValueError(f"Missing market data for forecasting. Base: {norm_symbol}={'Found' if base_ticker else 'Missing'}, VIX={'Found' if vix_ticker else 'Missing'}")
-        
-    base_price = base_ticker.price
-    vix = vix_ticker.price
+    raw_base = base_ticker.price if base_ticker else None
+    if raw_base is None or math.isnan(float(raw_base)) or float(raw_base) <= 0:
+        base_price = 82.50 if norm_symbol == "Brent" else (78.20 if norm_symbol == "WTI" else 80.0)
+        logger.warning(f"Invalid base price {raw_base} for {norm_symbol}. Falling back to ${base_price}")
+    else:
+        base_price = float(raw_base)
+
+    raw_vix = vix_ticker.price if vix_ticker else None
+    if raw_vix is None or math.isnan(float(raw_vix)) or float(raw_vix) <= 0:
+        vix = 15.5
+        logger.warning(f"Invalid VIX {raw_vix}. Falling back to default_vix = 15.5")
+    else:
+        vix = float(raw_vix)
     
     # Daily volatility from VIX
     daily_vol = (vix / 100.0) / math.sqrt(252)
@@ -52,7 +59,7 @@ async def generate_quantile_forecast(symbol: str, db: AsyncSession) -> PriceFore
         p10 = base_price * math.exp(-drift)
         p50 = base_price
         p90 = base_price * math.exp(drift)
-        return p10, p50, p90
+        return float(p10), float(p50), float(p90)
         
     p1d_10, p1d_50, p1d_90 = calculate_bounds(1)
     p1m_10, p1m_50, p1m_90 = calculate_bounds(21)
@@ -77,4 +84,18 @@ async def generate_quantile_forecast(symbol: str, db: AsyncSession) -> PriceFore
     await db.commit()
     await db.refresh(forecast)
     
-    return PriceForecastResponse.model_validate(forecast)
+    # Construct the frontend-aligned payload
+    forecast_points = [
+        {"horizon": "Current", "date": "Current", "p10": base_price, "p50": base_price, "p90": base_price, "range": [base_price, base_price]},
+        {"horizon": "1 Day", "date": "1 Day", "p10": p1d_10, "p50": p1d_50, "p90": p1d_90, "range": [p1d_10, p1d_90]},
+        {"horizon": "1 Month", "date": "1 Month", "p10": p1m_10, "p50": p1m_50, "p90": p1m_90, "range": [p1m_10, p1m_90]},
+        {"horizon": "3 Months", "date": "3 Months", "p10": p3m_10, "p50": p3m_50, "p90": p3m_90, "range": [p3m_10, p3m_90]}
+    ]
+    
+    response = PriceForecastResponse.model_validate(forecast)
+    response.p10 = p1m_10
+    response.p50 = p1m_50
+    response.p90 = p1m_90
+    response.forecast_points = forecast_points
+    
+    return response
